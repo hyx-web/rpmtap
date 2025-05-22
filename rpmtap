@@ -1,0 +1,104 @@
+
+#!/bin/bash
+# RPM to pacman converter (仅构建不安装)
+VERSION="1.2"
+REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot")
+
+cleanup() {
+    [ -n "$work_dir" ] && rm -rf "$work_dir"
+}
+
+check_deps() {
+    for pkg in "${REQUIRED_PKGS[@]}"; do
+        if ! command -v "$pkg" &> /dev/null; then
+            echo "错误: 需要安装 $pkg" >&2
+            exit 1
+        fi
+    done
+}
+
+show_help() {
+    echo "rpmtap v$VERSION - 将RPM包转换为pacman格式(仅构建)"
+    echo "用法: rpmtap [选项] <rpm文件>"
+    echo "选项:"
+    echo "  -h, --help     显示帮助信息"
+    echo "  -o, --output   指定输出目录(默认当前目录)"
+    echo "  -v, --version  显示版本信息"
+}
+
+convert_rpm() {
+    local rpm_file="$1"
+    local output_dir="${2:-.}"
+    
+    # 验证RPM文件
+    [ ! -f "$rpm_file" ] && { echo "错误: RPM文件不存在" >&2; exit 1; }
+    rpm_file=$(realpath "$rpm_file")
+    
+    # 提取包信息
+    local pkg_name=$(rpm -qp --queryformat '%{NAME}' "$rpm_file" 2>/dev/null)
+    local pkg_version=$(rpm -qp --queryformat '%{VERSION}' "$rpm_file" 2>/dev/null)
+    local pkg_release=$(rpm -qp --queryformat '%{RELEASE}' "$rpm_file" 2>/dev/null | cut -d'.' -f1)
+    local pkg_arch=$(rpm -qp --queryformat '%{ARCH}' "$rpm_file" 2>/dev/null)
+    
+    [ -z "$pkg_name" ] && { echo "错误: 无效的RPM文件" >&2; exit 1; }
+
+    # 创建工作目录
+    work_dir=$(mktemp -d)
+    trap cleanup EXIT
+    local pkg_dir="$work_dir/${pkg_name}-${pkg_version}-${pkg_release}-${pkg_arch}"
+    mkdir -p "$pkg_dir"
+
+    # 解压RPM内容
+    (cd "$pkg_dir" && rpm2cpio "$rpm_file" | cpio -idmv 2>/dev/null)
+
+    # 生成PKGBUILD
+    cat > "$pkg_dir/PKGBUILD" <<EOF
+pkgname=$pkg_name
+pkgver=$pkg_version
+pkgrel=$pkg_release
+pkgdesc="Converted from RPM package"
+source=("file://$rpm_file")
+arch=('aarch64' 'ppc64le' 's390x' 'x86_64')
+md5sums=('SKIP')
+
+package() {
+    cp -r "\$srcdir"/* "\$pkgdir"
+}
+EOF
+
+    # 构建包
+    (cd "$pkg_dir" && makepkg -sr --skipchecksums --noconfirm) || {
+        echo "错误: 构建失败" >&2
+        exit 1
+    }
+
+    # 移动结果文件
+    mkdir -p "$output_dir"
+    mv "$pkg_dir"/*.pkg.tar.* "$output_dir" 2>/dev/null || {
+        echo "警告: 未生成包文件" >&2
+        exit 1
+    }
+
+    echo "构建完成: $output_dir/${pkg_name}-${pkg_version}-${pkg_release}-${pkg_arch}.pkg.tar.*"
+}
+
+main() {
+    check_deps
+    local output_dir="."
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) show_help; exit 0 ;;
+            -v|--version) echo "rpmtap v$VERSION"; exit 0 ;;
+            -o|--output) output_dir="$2"; shift ;;
+            *) break ;;
+        esac
+        shift
+    done
+
+    [ -z "$1" ] && { show_help; exit 1; }
+    convert_rpm "$1" "$output_dir"
+}
+
+main "$@"
+
