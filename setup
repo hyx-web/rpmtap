@@ -1,0 +1,2 @@
+#!/bin/bash
+mv rpmtap /usr/bin/rpmtap
