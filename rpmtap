@@ -1,6 +1,6 @@
 
 #!/bin/bash
-# RPM to pacman converter (仅构建不安装)
+# RPM to pacman converter
 VERSION="1.2"
 REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot")
 
