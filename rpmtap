@@ -18,7 +18,7 @@ check_deps() {
 }
 
 show_help() {
-    echo "rpmtap v$VERSION - 将RPM包转换为pacman格式(仅构建)"
+    echo "rpmtap v$VERSION - 将RPM包转换为pacman格式"
     echo "用法: rpmtap [选项] <rpm文件>"
     echo "选项:"
     echo "  -h, --help     显示帮助信息"
