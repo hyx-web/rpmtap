@@ -1,4 +1,3 @@
-
 #!/bin/bash
 # RPM to pacman converter
 VERSION="1.2"
@@ -29,29 +28,18 @@ show_help() {
 convert_rpm() {
     local rpm_file="$1"
     local output_dir="${2:-.}"
-    
-    # 验证RPM文件
     [ ! -f "$rpm_file" ] && { echo "错误: RPM文件不存在" >&2; exit 1; }
     rpm_file=$(realpath "$rpm_file")
-    
-    # 提取包信息
     local pkg_name=$(rpm -qp --queryformat '%{NAME}' "$rpm_file" 2>/dev/null)
     local pkg_version=$(rpm -qp --queryformat '%{VERSION}' "$rpm_file" 2>/dev/null)
     local pkg_release=$(rpm -qp --queryformat '%{RELEASE}' "$rpm_file" 2>/dev/null | cut -d'.' -f1)
-    local pkg_arch=$(rpm -qp --queryformat '%{ARCH}' "$rpm_file" 2>/dev/null)
-    
+    local pkg_arch=$(rpm -qp --queryformat '%{ARCH}' "$rpm_file" 2>/dev/null) 
     [ -z "$pkg_name" ] && { echo "错误: 无效的RPM文件" >&2; exit 1; }
-
-    # 创建工作目录
     work_dir=$(mktemp -d)
     trap cleanup EXIT
     local pkg_dir="$work_dir/${pkg_name}-${pkg_version}-${pkg_release}-${pkg_arch}"
     mkdir -p "$pkg_dir"
-
-    # 解压RPM内容
     (cd "$pkg_dir" && rpm2cpio "$rpm_file" | cpio -idmv 2>/dev/null)
-
-    # 生成PKGBUILD
     cat > "$pkg_dir/PKGBUILD" <<EOF
 pkgname=$pkg_name
 pkgver=$pkg_version
@@ -65,14 +53,10 @@ package() {
     cp -r "\$srcdir"/* "\$pkgdir"
 }
 EOF
-
-    # 构建包
     (cd "$pkg_dir" && makepkg -sr --skipchecksums --noconfirm) || {
         echo "错误: 构建失败" >&2
         exit 1
     }
-
-    # 移动结果文件
     mkdir -p "$output_dir"
     mv "$pkg_dir"/*.pkg.tar.* "$output_dir" 2>/dev/null || {
         echo "警告: 未生成包文件" >&2
@@ -101,4 +85,3 @@ main() {
 }
 
 main "$@"
-
