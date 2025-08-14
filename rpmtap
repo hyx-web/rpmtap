@@ -29,7 +29,7 @@ show_help() {
 get_pacman_deps() {
     local rpm_file="$1"
     local deps=()
-    local rpm_deps=$(rpm -qpR "$rpm_file"  2>/dev/null | grep -vE '^(rpmlib|rtld|/|lib|config)' | sed 's/>=.*//')
+    local rpm_deps=$(rpm -qpR "$rpm_file"  2>/dev/null | grep -vE '^(rpmlib|rtld|/|.so|config)' | sed 's/>=.*//' | sed 's/.so.*//')
     for dep in $rpm_deps; do
         # 检查依赖是否存在于Arch官方仓库
         if pacman -Si "$dep" >/dev/null 2>&1; then
