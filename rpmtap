@@ -1,7 +1,7 @@
 #!/bin/bash
 # RPM to pacman converter with dependency handling
 VERSION="1.3"
-REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot")
+REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot" "sed" "grep" "rpm2cpio" "cpio")
 
 cleanup() {
     [ -n "$work_dir" ] && rm -rf "$work_dir"
