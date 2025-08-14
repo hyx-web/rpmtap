@@ -5,4 +5,4 @@ rpm to pacman package
 
 chmod +x setup
 
-./setup
+sudo ./setup
