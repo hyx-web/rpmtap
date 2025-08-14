@@ -1,6 +1,6 @@
 #!/bin/bash
-# RPM to pacman converter
-VERSION="1.2"
+# RPM to pacman converter with dependency handling
+VERSION="1.3"
 REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot")
 
 cleanup() {
@@ -23,11 +23,28 @@ show_help() {
     echo "  -h, --help     显示帮助信息"
     echo "  -o, --output   指定输出目录(默认当前目录)"
     echo "  -v, --version  显示版本信息"
+    echo "  -d, --nodeps   忽略依赖关系"
+}
+
+get_pacman_deps() {
+    local rpm_file="$1"
+    local deps=()
+    local rpm_deps=$(rpm -qpR "$rpm_file"  2>/dev/null | grep -vE '^(rpmlib|rtld|/|lib|config)' | sed 's/>=.*//')
+    for dep in $rpm_deps; do
+        # 检查依赖是否存在于Arch官方仓库
+        if pacman -Si "$dep" >/dev/null 2>&1; then
+            deps+=("$dep")
+        else
+            echo "忽略不在Arch仓库的依赖: $dep" >&2
+        fi
+    done
+    echo "${deps[@]}"
 }
 
 convert_rpm() {
     local rpm_file="$1"
     local output_dir="${2:-.}"
+    local nodeps="${3:-false}"
     [ ! -f "$rpm_file" ] && { echo "错误: RPM文件不存在" >&2; exit 1; }
     rpm_file=$(realpath "$rpm_file")
     local pkg_name=$(rpm -qp --queryformat '%{NAME}' "$rpm_file" 2>/dev/null)
@@ -35,11 +52,19 @@ convert_rpm() {
     local pkg_release=$(rpm -qp --queryformat '%{RELEASE}' "$rpm_file" 2>/dev/null | cut -d'.' -f1)
     local pkg_arch=$(rpm -qp --queryformat '%{ARCH}' "$rpm_file" 2>/dev/null) 
     [ -z "$pkg_name" ] && { echo "错误: 无效的RPM文件" >&2; exit 1; }
+    
     work_dir=$(mktemp -d)
     trap cleanup EXIT
     local pkg_dir="$work_dir/${pkg_name}-${pkg_version}-${pkg_release}-${pkg_arch}"
     mkdir -p "$pkg_dir"
     (cd "$pkg_dir" && rpm2cpio "$rpm_file" | cpio -idmv 2>/dev/null)
+    
+    # 获取依赖关系
+    local pkg_deps=""
+    if [ "$nodeps" = "false" ]; then
+        pkg_deps=$(get_pacman_deps "$rpm_file")
+    fi
+    
     cat > "$pkg_dir/PKGBUILD" <<EOF
 pkgname=$pkg_name
 pkgver=$pkg_version
@@ -47,13 +72,15 @@ pkgrel=$pkg_release
 pkgdesc="Converted from RPM package"
 source=("file://$rpm_file")
 arch=('aarch64' 'ppc64le' 's390x' 'x86_64')
+depends=($pkg_deps)
 md5sums=('SKIP')
 
 package() {
     cp -r "\$srcdir"/* "\$pkgdir"
+    rm "\$pkgdir"/*.rpm
 }
 EOF
-    (cd "$pkg_dir" && makepkg -sr --skipchecksums --noconfirm) || {
+    (cd "$pkg_dir" && makepkg -sr --skipchecksums --noconfirm --nodeps) || {
         echo "错误: 构建失败" >&2
         exit 1
     }
@@ -69,19 +96,21 @@ EOF
 main() {
     check_deps
     local output_dir="."
+    local nodeps="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help) show_help; exit 0 ;;
             -v|--version) echo "rpmtap v$VERSION"; exit 0 ;;
             -o|--output) output_dir="$2"; shift ;;
+            -d|--nodeps) nodeps="true" ;;
             *) break ;;
         esac
         shift
     done
 
     [ -z "$1" ] && { show_help; exit 1; }
-    convert_rpm "$1" "$output_dir"
+    convert_rpm "$1" "$output_dir" "$nodeps"
 }
 
 main "$@"
