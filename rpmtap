@@ -1,6 +1,6 @@
 #!/bin/bash
 # RPM to pacman converter with dependency handling
-VERSION="1.3"
+VERSION="1.4"
 REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot" "sed" "grep" "rpm2cpio" "cpio")
 
 cleanup() {
@@ -29,7 +29,7 @@ show_help() {
 get_pacman_deps() {
     local rpm_file="$1"
     local deps=()
-    local rpm_deps=$(rpm -qpR "$rpm_file"  2>/dev/null | grep -vE '^(rpmlib|rtld|/|.so|config)' | sed 's/>=.*//' | sed 's/.so.*//')
+    local rpm_deps=$(rpm -qpR "$rpm_file"  2>/dev/null | grep -vE '^(libc|rtld|/|.so)' | sed 's/>=.*//' | sed 's/<=.*//' | sed 's/=.*//' | sed 's/.so.*//' | sed 's/(.*//')
     for dep in $rpm_deps; do
         # 检查依赖是否存在于Arch官方仓库
         if pacman -Si "$dep" >/dev/null 2>&1; then
@@ -39,6 +39,21 @@ get_pacman_deps() {
         fi
     done
     echo "${deps[@]}"
+}
+
+validate_arch() {
+    local arch=$1
+    case "$arch" in
+        x86_64|i386|i586|i686|aarch64|ppc64le|s390x)
+            echo "$arch"
+            return 0 ;;
+        noarch)
+            echo "any"
+            return 0 ;;
+        *)
+            echo "unknown"
+            return 1 ;;
+    esac
 }
 
 convert_rpm() {
@@ -51,6 +66,9 @@ convert_rpm() {
     local pkg_version=$(rpm -qp --queryformat '%{VERSION}' "$rpm_file" 2>/dev/null)
     local pkg_release=$(rpm -qp --queryformat '%{RELEASE}' "$rpm_file" 2>/dev/null | cut -d'.' -f1)
     local pkg_arch=$(rpm -qp --queryformat '%{ARCH}' "$rpm_file" 2>/dev/null) 
+    pkg_arch=$(validate_arch "$pkg_arch")
+    local pkg_desc=$(rpm -qp --queryformat '%{DESCRIPTION}' "$rpm_file" 2>/dev/null | sed 's/"/\\"/g')
+    [ -z "$pkg_desc" ] && pkg_desc="Converted from RPM package"
     [ -z "$pkg_name" ] && { echo "错误: 无效的RPM文件" >&2; exit 1; }
     
     work_dir=$(mktemp -d)
@@ -69,9 +87,10 @@ convert_rpm() {
 pkgname=$pkg_name
 pkgver=$pkg_version
 pkgrel=$pkg_release
-pkgdesc="Converted from RPM package"
+pkgdesc="$pkg_desc"
 source=("file://$rpm_file")
-arch=('aarch64' 'ppc64le' 's390x' 'x86_64')
+#arch=('aarch64' 'ppc64le' 's390x' 'x86_64')
+arch=('$pkg_arch')
 depends=($pkg_deps)
 md5sums=('SKIP')
 
