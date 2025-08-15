@@ -1,7 +1,7 @@
 #!/bin/bash
 # RPM to pacman converter with dependency handling
 VERSION="1.4"
-REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot" "sed" "grep" "rpm2cpio" "cpio")
+REQUIRED_PKGS=("rpm" "bsdtar" "fakeroot" "sed" "grep" "rpm2cpio" "cpio" "yay")
 
 cleanup() {
     [ -n "$work_dir" ] && rm -rf "$work_dir"
@@ -32,7 +32,7 @@ get_pacman_deps() {
     local rpm_deps=$(rpm -qpR "$rpm_file"  2>/dev/null | grep -vE '^(libc|rtld|/|.so)' | sed 's/>=.*//' | sed 's/<=.*//' | sed 's/=.*//' | sed 's/.so.*//' | sed 's/(.*//')
     for dep in $rpm_deps; do
         # 检查依赖是否存在于Arch官方仓库
-        if pacman -Si "$dep" >/dev/null 2>&1; then
+        if yay -Si "$dep" >/dev/null 2>&1; then
             deps+=("$dep")
         else
             echo "忽略不在Arch仓库的依赖: $dep" >&2
